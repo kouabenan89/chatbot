@@ -70,6 +70,15 @@ export const SELECTORS = {
 
 export type Asset = (typeof INITIAL_ASSETS)[number] & { live?: boolean }
 
+export const COINGECKO_IDS: Record<string, string> = {
+  ETH: "ethereum",
+  USDC: "usd-coin",
+  ARB: "arbitrum",
+  wBTC: "wrapped-bitcoin",
+}
+
+export type MarketQuote = { usd: number; usd_24h_change: number }
+
 export const fmtUSD = (n: number) =>
   n.toLocaleString("fr-FR", { style: "currency", currency: "USD", maximumFractionDigits: 2 })
 

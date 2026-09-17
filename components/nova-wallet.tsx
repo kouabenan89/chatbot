@@ -20,6 +20,7 @@ import {
 import {
   ACCOUNTS,
   CHAIN_NAMES,
+  COINGECKO_IDS,
   INITIAL_ASSETS,
   INITIAL_LAUNCHES,
   MINER_TIERS,
@@ -74,6 +75,8 @@ export default function NovaWallet() {
   const [launches, setLaunches] = useState(INITIAL_LAUNCHES)
   const [discoverQuery, setDiscoverQuery] = useState("")
   const [discoverEns, setDiscoverEns] = useState<any>({ status: "idle", address: null, avatar: null })
+  const [marketStatus, setMarketStatus] = useState<"idle" | "loading" | "live" | "error">("idle")
+  const [marketUpdatedAt, setMarketUpdatedAt] = useState<Date | null>(null)
 
   // Simulated proof-of-work accrual — runs in the background even if the
   // mining panel is closed, like a real miner would keep running.
@@ -89,6 +92,45 @@ export default function NovaWallet() {
 
   const account = ACCOUNTS.find((a) => a.id === accountId)!
   const network = NETWORKS.find((n) => n.id === networkId)!
+
+  useEffect(() => {
+    let cancelled = false
+    const refreshMarket = async () => {
+      setMarketStatus("loading")
+      try {
+        const ids = Object.values(COINGECKO_IDS).join(",")
+        const response = await fetch(
+          `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`,
+          { cache: "no-store" },
+        )
+        if (!response.ok) throw new Error("market request failed")
+        const quotes = (await response.json()) as Record<string, { usd?: number; usd_24h_change?: number }>
+        if (cancelled) return
+        setAssets((previous) =>
+          previous.map((asset) => {
+            const quote = quotes[COINGECKO_IDS[asset.symbol]]
+            if (!quote?.usd) return asset
+            return {
+              ...asset,
+              price: quote.usd,
+              change: quote.usd_24h_change ?? asset.change,
+              live: true,
+            }
+          }),
+        )
+        setMarketUpdatedAt(new Date())
+        setMarketStatus("live")
+      } catch {
+        if (!cancelled) setMarketStatus("error")
+      }
+    }
+    refreshMarket()
+    const interval = window.setInterval(refreshMarket, 60_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [])
 
   const fetchEthPriceUsd = async () => {
     try {
@@ -679,6 +721,20 @@ export default function NovaWallet() {
           <p className="mt-1.5 font-mono text-4xl font-semibold tracking-tight tabular-nums">
             {fmtUSD(displayTotal)}
           </p>
+          <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${
+                marketStatus === "live" ? "bg-positive" : marketStatus === "error" ? "bg-negative" : "animate-pulse bg-primary"
+              }`}
+            />
+            <span>
+              {marketStatus === "live"
+                ? `Marché mondial en direct${marketUpdatedAt ? ` · ${marketUpdatedAt.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}` : ""}`
+                : marketStatus === "error"
+                  ? "Marché indisponible · derniers cours conservés"
+                  : "Synchronisation des cours mondiaux…"}
+            </span>
+          </div>
 
           <button
             onClick={copyAddress}
